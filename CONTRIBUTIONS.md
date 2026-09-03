@@ -21,6 +21,11 @@ Created: 2026-09-02
 4. Statuses: `Not started` · `Coordinating` (waiting on an issue reply before starting) ·
    `Blocked` (waiting on something needed to move forward, e.g. a reproduction) ·
    `In progress` · `In review` (PR open upstream) · `Merged` · `Dropped`.
+5. **Stale issues:** some tracked issues turn out to already be resolved — in code but
+   never referenced back to the issue (like #190), or by someone else who just hasn't
+   opened a PR yet (like #294). When that happens: mark it `Dropped`, note the evidence
+   (commit hash, code reference) in its **Log**, and move on rather than re-investigating
+   it in a future session. Don't treat a stale issue as a contribution opportunity for us.
 
 ## Repo conventions to hold every proposal to
 
@@ -42,8 +47,8 @@ From `CONTRIBUTING.md`, distilled:
 | 1 | Fix Shear Wall - Advanced screenshot crash | Bug / quick win | Blocked — pending reproduction | [#324](https://github.com/JWock82/Pynite/issues/324) |
 | 2 | Add pyrefly/ty type checking to CI + prek | Ongoing effort | Not started | [#327](https://github.com/JWock82/Pynite/issues/327) |
 | 3 | Linear eigenvalue buckling analysis | New feature | Not started | [#309](https://github.com/JWock82/Pynite/issues/309) |
-| 4 | Run `Examples/` as part of the test suite | Quick win | Not started | [#294](https://github.com/JWock82/Pynite/issues/294) |
-| 5 | Close out local-axes visualization | Quick win | Not started | [#190](https://github.com/JWock82/Pynite/issues/190) |
+| 4 | Run `Examples/` as part of the test suite | Quick win | Dropped — stale, addressed elsewhere | [#294](https://github.com/JWock82/Pynite/issues/294) |
+| 5 | Close out local-axes visualization | Quick win | Dropped — stale, comment posted | [#190](https://github.com/JWock82/Pynite/issues/190) |
 | 6 | Cross-drive (`E:`) path crash | Quick win (unconfirmed) | Not started | [#285](https://github.com/JWock82/Pynite/issues/285) |
 | 7 | conda-forge release | Infra, no code | Not started | [#200](https://github.com/JWock82/Pynite/issues/200) |
 | 8 | Performance: matrix assembly / discretize / merge_duplicate_nodes | Performance | Coordinating | [#269](https://github.com/JWock82/Pynite/issues/269), [#251](https://github.com/JWock82/Pynite/issues/251) |
@@ -52,7 +57,8 @@ From `CONTRIBUTING.md`, distilled:
 
 Suggested order: **1 → 2 → (comment on 8 and 9) → 3**. Item 1 is small and builds trust
 fast; item 2 is unclaimed and low-risk; items 8 and 9 need a maintainer/contributor reply
-before any code is written; item 3 is the biggest legitimate feature opening.
+before any code is written; item 3 is the biggest legitimate feature opening. Items 4 and
+5 turned out stale — see their sections and the stale-issues policy above.
 
 Item 1 is currently blocked — couldn't reproduce the reported crash (see its section
 below), so it's paused pending a reproduction attempt on different hardware. **2** is the
@@ -178,50 +184,55 @@ convention.
 ## 4. Run `Examples/` as part of the test suite
 
 - **Bucket:** Quick win / ongoing effort
-- **Status:** Not started
+- **Status:** Dropped — stale, already addressed by the original reporter
 - **Upstream issue:** [#294](https://github.com/JWock82/Pynite/issues/294)
-- **Branch (when started):** `test/run-examples-in-suite`
 
-**What's requested:** run everything in `Examples/` during tests to catch API breakage
-(not to validate numerical correctness). Original requester (jonbiemond) said they'd
-implement it if the approach were approved, then never followed up. Runtime measured at
-~2m12s, so it should be opt-in/marked slow, not part of the default `pytest` run.
+**What was requested:** run everything in `Examples/` during tests to catch API breakage
+(not to validate numerical correctness).
 
-**Plan:** no `conftest.py` or pytest markers exist in the repo yet — this is greenfield.
-Add a `slow` marker, a parametrized test that imports/executes each `Examples/*.py`,
-and register it to run in CI as a separate job (not the default `pytest` invocation
-flake8+CI already runs).
+**Why dropped:** jonbiemond (the original requester) already wrote it themselves —
+commit [`51ce212`](https://github.com/jonbiemond/Pynite/commit/51ce2127cde98831197edcb73552394362bc5fe8)
+on their own fork, message "Run examples as part of test suite — resolves issue
+JWock82#294". Adds `Testing/test_examples.py`: `autouse=True` fixtures mocking
+`Renderer.render_model` (both backends), `matplotlib.pyplot.show`, and
+`Reporting.create_report` so examples run headless, then a
+`@pytest.mark.parametrize`d test that discovers and `exec()`s every `Examples/*.py`.
+**No PR opened against upstream yet** (checked JWock82/Pynite's open PR list — not
+there), so this isn't merged or even in review, just clearly claimed. Building our own
+version now would be redundant and would compete with the person who already did the
+work and referenced the issue directly.
 
-**Collision risk:** none found — worth a comment on the issue confirming jonbiemond
-isn't already mid-implementation before starting.
+**If revisited:** only if jonbiemond's fork goes dormant for a long stretch with no PR —
+check their fork/the issue again before ever restarting this from scratch.
 
 **Log:**
-- 2026-09-02: Identified. Not yet started.
+- 2026-09-02: Identified as unclaimed. Started scoping.
+- 2026-09-03: User found jonbiemond already implemented and referenced the issue in
+  their own fork's commit. Dropped — not ours to build.
 
 ---
 
 ## 5. Close out local-axes visualization
 
 - **Bucket:** Quick win / housekeeping
-- **Status:** Not started
+- **Status:** Dropped — stale, comment posted by user
 - **Upstream issue:** [#190](https://github.com/JWock82/Pynite/issues/190)
-- **Branch (when started):** n/a unless a doc/example gap is found
 
-**Finding:** this is already implemented. `VisLocalCsys` (`Pynite/Visualization.py:2698`)
-draws colored X/Y/Z arrows at member midpoints, and a later commit
-(`e728613`, "Local axes now auto-size to match annotation size...") addressed the
-auto-sizing the issue asked for. The issue itself is still open.
+**Finding:** this was already implemented in code (not referenced back to the issue).
+`VisLocalCsys` (`Pynite/Visualization.py:2698`) draws colored X/Y/Z arrows at member
+midpoints via the public `renderer.member_csys = True` toggle (landed in `1ad9fb6`,
+auto-sizing refined in `e728613`), documented in `docs/source/rendering.rst`. Generated
+a demo figure with the real API (`renderer.member_csys = True` on a 3-member frame,
+proper `vtkCamera` isometric framing, auto-computed `annotation_size`) confirming it
+works exactly as the issue asks.
 
-**Plan:** verify the public toggle (`renderer.show_local_coordinate` per the issue's
-ask) is exposed and documented; if it's already there, comment on the issue with the
-commit reference so the maintainer can close it — cheap goodwill, near-zero code. If a
-doc/example gap exists, patch that instead.
-
-**Collision risk:** none.
+**Resolution:** user posted a comment on the issue themselves pointing to the existing
+implementation. Nothing further for us to do here — leave it to the maintainer to close.
 
 **Log:**
-- 2026-09-02: Confirmed already implemented in code. Not yet started (just needs the
-  verification pass + comment).
+- 2026-09-02: Confirmed already implemented in code.
+- 2026-09-03: Generated a demo figure proving the feature. User commented on the issue
+  directly. Dropped — done from our side.
 
 ---
 
