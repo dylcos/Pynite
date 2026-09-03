@@ -19,6 +19,7 @@ Created: 2026-09-02
    **Log** for anything future-you needs to know (a maintainer reply, a design decision,
    a reason something got dropped).
 4. Statuses: `Not started` · `Coordinating` (waiting on an issue reply before starting) ·
+   `Blocked` (waiting on something needed to move forward, e.g. a reproduction) ·
    `In progress` · `In review` (PR open upstream) · `Merged` · `Dropped`.
 
 ## Repo conventions to hold every proposal to
@@ -38,7 +39,7 @@ From `CONTRIBUTING.md`, distilled:
 
 | # | Proposal | Bucket | Status | Upstream issue |
 |---|----------|--------|--------|-----------------|
-| 1 | Fix Shear Wall - Advanced screenshot crash | Bug / quick win | Not started | [#324](https://github.com/JWock82/Pynite/issues/324) |
+| 1 | Fix Shear Wall - Advanced screenshot crash | Bug / quick win | Blocked — pending reproduction | [#324](https://github.com/JWock82/Pynite/issues/324) |
 | 2 | Add pyrefly/ty type checking to CI + prek | Ongoing effort | Not started | [#327](https://github.com/JWock82/Pynite/issues/327) |
 | 3 | Linear eigenvalue buckling analysis | New feature | Not started | [#309](https://github.com/JWock82/Pynite/issues/309) |
 | 4 | Run `Examples/` as part of the test suite | Quick win | Not started | [#294](https://github.com/JWock82/Pynite/issues/294) |
@@ -53,34 +54,71 @@ Suggested order: **1 → 2 → (comment on 8 and 9) → 3**. Item 1 is small and
 fast; item 2 is unclaimed and low-risk; items 8 and 9 need a maintainer/contributor reply
 before any code is written; item 3 is the biggest legitimate feature opening.
 
+Item 1 is currently blocked — couldn't reproduce the reported crash (see its section
+below), so it's paused pending a reproduction attempt on different hardware. **2** is the
+next thing to actually pick up in the meantime.
+
 ---
 
 ## 1. Fix Shear Wall - Advanced screenshot crash
 
 - **Bucket:** Bug / quick win
-- **Status:** Not started
+- **Status:** Blocked — could not reproduce; paused until reproduced elsewhere
 - **Upstream issue:** [#324](https://github.com/JWock82/Pynite/issues/324)
 - **Branch (when started):** `fix/shear-wall-screenshot-crash`
 
-**Root cause (confirmed by reading the code, not just the traceback):**
+**Original theory (from reading the code only, not verified):**
 `ShearWall.screenshots()` calls `Renderer.screenshot(..., interact=True)`. `screenshot()`
 calls `render_model(interact=True)`, which — when `interact=True` — blocks on
 `interactor.Start()` and then calls `window.Finalize()` **before returning**
 (`Pynite/Visualization.py:308-361`). Back in `screenshot()`, `w2if.SetInput(window)` then
-runs on an already-finalized window (`Pynite/Visualization.py:381-384`) → the
-`TypeError`. Only surfaced now because commit `22459e6` switched the example from the
-`pyvista` backend (whose `screenshot()` doesn't have this ordering bug) to the `vtk`
-backend, which does.
+runs on an already-finalized window (`Pynite/Visualization.py:381-384`), theorized to
+cause the reported `TypeError`.
 
-**Plan:** give `render_model`/`screenshot` a way to defer finalization until after the
-screenshot is captured (e.g. a `finalize=False` param on `render_model`; `screenshot()`
-finalizes only after `writer.Write()`). Verify against `Testing/test_shear_wall.py` and
-the `Shear Wall - Advanced.py` example.
+**This theory did not survive reproduction.** Ran the real `Examples/Shear Wall -
+Advanced.py` end-to-end (`uv sync --extra all --all-groups` → `vtk==9.6.2` per
+`uv.lock`) under `xvfb-run`, with `vtkRenderWindowInteractor` subclassed so `Start()`
+auto-terminates instead of blocking forever (no real user/display to close the window
+in this environment). This exercises the exact call the issue's traceback names
+(`ShearWall.py:825`, `interact=True, reset_camera=True`). Result: **completed cleanly,
+both `screenshot()` calls produced valid non-trivial PNGs (750×750), no `TypeError`.**
+So `Finalize()`-before-`SetInput` does not throw on this VTK/platform combination —
+the original theory is disproven, not confirmed.
+
+**What's still real, reproduction aside:** `self.window` is created once in
+`Renderer.__init__` (`Visualization.py:71`) and reused across every `render_model()`/
+`screenshot()` call on that instance. `ShearWall.screenshots()` calls `screenshot()`
+twice on one `Renderer` (`interact=True` then `interact=False`), and `render_model()`
+unconditionally finalizes that shared window whenever `interact=True` — finalizing a
+window that's about to be reused is fragile lifecycle management regardless of whether
+it crashes here. The pyvista backend (`Rendering.py`) doesn't have this problem because
+`pv.Plotter.screenshot()` owns the window lifecycle internally; the vtk backend hand-rolls
+it. Also notable: **no existing test exercises `interact=True` at all** — every call in
+`Testing/test_Visualization.py` uses `interact=False`, so this path has zero coverage,
+which is plausibly why the regression (from commit `22459e6`, switching the example from
+`pyvista` to `vtk`) shipped unnoticed.
+
+**Revised plan, once reproduced:**
+1. Ask the reporter (jonbiemond) for OS + `vtk.vtkVersion.GetVTKVersion()` — not done yet.
+2. TDD: add a test mirroring `ShearWall.screenshots()`'s exact pattern (one `Renderer`,
+   `screenshot(interact=True)` then `screenshot(interact=False)`) asserting both produce
+   valid images — this is genuinely missing coverage either way.
+3. Fix the window-reuse lifecycle: add `finalize: bool = True` to `render_model()`;
+   `screenshot()` passes `finalize=False`, captures the image, finalizes only when the
+   caller won't render again.
+4. Verify against the real example the same way it was reproduced (Xvfb + auto-closing
+   interactor), plus the new test.
+5. PR should be honest that it fixes a verified structural issue, not a confirmed
+   reproduction of the reporter's exact error — ask them to confirm once it's up.
 
 **Collision risk:** none found.
 
 **Log:**
-- 2026-09-02: Root cause traced during initial repo review. Not yet started.
+- 2026-09-02: Root cause theorized from reading the code (not yet verified).
+- 2026-09-03: Attempted reproduction — failed. Original theory disproven. Real structural
+  issue (window reuse + premature finalize) still stands, but paused per user request
+  until they can attempt reproduction on different hardware. Do not resume until either
+  it reproduces somewhere, or the reporter provides environment details on the issue.
 
 ---
 
